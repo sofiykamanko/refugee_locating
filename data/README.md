@@ -8,7 +8,7 @@
 | `destatis_counts_selected_2025.csv` | The eight origins used in the generator, all foreigners, and the average count per other nationality | Derived from the file above |
 | `ba_employment_asylum_countries_by_state.xlsx` | Employment rate of nationals of the eight main non-European asylum countries, by state, monthly | Bundesagentur für Arbeit, Statistik, "Beschäftigte aus den nichteuropäischen Asylherkunftsländern" |
 
-Other inputs are hard-coded in `src/refsim/generator.py` with their source next to each value:
+Other inputs are hard-coded in `src/refugee_sim/generator.py` with their source next to each value:
 
 - attribute distributions: Strasser Ceballos & Kern (2025), Table 5 (IAB-BAMF-SOEP sample)
 - state quotas: BAMF, "Erstverteilung" (Königsteiner Schlüssel)
@@ -18,4 +18,4 @@ Other inputs are hard-coded in `src/refsim/generator.py` with their source next 
 ## synthetic/
 
 `synthetic_refugees.csv`: 5,000 people, seed 42, no community effect. Recreate with
-`python scripts/generate_data.py --n 5000 --seed 42`. Other generated files are not committed.
+`python -m refugee_sim.generator --n 5000 --seed 42 --out data/synthetic/synthetic_refugees.csv` (the committed file was made with the earlier v1 generator). Simulation results are in `results/`.

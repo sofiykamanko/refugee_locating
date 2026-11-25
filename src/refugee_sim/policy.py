@@ -208,3 +208,73 @@ def assign_forward(scores, cap, origins, slope, dC, lookahead, iterations=30):
         np.add.at(target, (pi, origins), 1)
         counts += 2 / (k + 2) * (target - counts)
     return assign_exact(scores + (weight * counts)[:, origins].T, cap)
+
+
+# ---------------------------------------------------------------------------
+# Other model classes (workstream A, step 6)
+# ---------------------------------------------------------------------------
+# Both have the PolicyModel interface: fit(people, states, y, placed_community), predict_matrix(people, community).
+
+class HybridModel:
+    """Gradient boosting for person x state effects + an explicit linear community term.
+
+    logit p = logit(boosting(X, state)) + delta_hat * (z_now - z_seen[state, origin])
+    The boosting model is trained without community inputs, so it learns each state and origin at
+    the community level its training data met (z_seen). delta_hat comes from a logit on the same
+    data (estimation.fit_delta). Unlike trees, the linear term extrapolates to communities never seen.
+    """
+
+    def __init__(self, seed=0, features=None):
+        self.boost = PolicyModel(seed, "base")
+
+    def fit(self, people, states, y, placed_community):
+        from .estimation import fit_delta, standardise
+        self.boost.fit(people, states, y)
+        self.delta_hat = fit_delta(people, states, y, placed_community["C"])
+        origins = people["country_of_origin"].map(ORIGIN_IDX).to_numpy()
+        K, O = len(STATES), len(ORIGINS)
+        total, count = np.zeros((K, O)), np.zeros((K, O))
+        np.add.at(total, (states, origins), standardise(placed_community["C"]))
+        np.add.at(count, (states, origins), 1)
+        from .estimation import C0
+        self.z_seen = np.where(count > 0, total / np.maximum(count, 1), standardise(C0))
+        return self
+
+    def predict_matrix(self, people, community):
+        from .estimation import standardise
+        origins = people["country_of_origin"].map(ORIGIN_IDX).to_numpy()
+        p = np.clip(self.boost.predict_matrix(people), 1e-6, 1 - 1e-6)
+        shift = self.delta_hat * (standardise(community["C"]) - self.z_seen)[:, origins].T
+        return 1 / (1 + np.exp(-(np.log(p / (1 - p)) + shift)))
+
+
+class LassoModel:
+    """L1-penalised logit (as in Ahani et al. 2021): characteristics, state, origin, z,
+    and characteristic x state interactions."""
+
+    def __init__(self, seed=0, features=None, C=0.05):
+        from sklearn.linear_model import LogisticRegression
+        self.clf = LogisticRegression(l1_ratio=1.0, C=C, solver="liblinear", max_iter=500)
+
+    @staticmethod
+    def design(people, states, C_placed):
+        from .estimation import standardise
+        from .generator import outcome_features
+        X = outcome_features(people).to_numpy()
+        S = np.eye(len(STATES))[states]
+        origins = people["country_of_origin"].map(ORIGIN_IDX).to_numpy()
+        inter = (X[:, :, None] * S[:, None, :]).reshape(len(X), -1)
+        return np.column_stack([X, S, np.eye(len(ORIGINS))[origins], standardise(C_placed)[:, None], inter])
+
+    def fit(self, people, states, y, placed_community):
+        self.clf.fit(self.design(people, states, placed_community["C"]), y)
+        return self
+
+    def predict_matrix(self, people, community):
+        n, K = len(people), len(STATES)
+        origins = people["country_of_origin"].map(ORIGIN_IDX).to_numpy()
+        rows = [self.design(people, np.full(n, k), community["C"][k, origins]) for k in range(K)]
+        return self.clf.predict_proba(np.vstack(rows))[:, 1].reshape(K, n).T
+
+
+MODELS = {"gbm": PolicyModel, "hybrid": HybridModel, "lasso": LassoModel}

@@ -14,6 +14,7 @@ truth:
 policy:
   retrain: fixed              # fixed | every_3 | every_round
   window: null                # rounds of history used when retraining; null = all
+  model: gbm                  # gbm | hybrid (gbm + explicit community term) | lasso (L1 logit)
   features: base              # what the model sees about the community: base | community | community_recent
   planner: model              # who places people: model (learned) | oracle (knows the truth) | random (quota)
   lookahead: 0                # future rounds the placement accounts for; 0 = greedy

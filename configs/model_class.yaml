@@ -1,0 +1,12 @@
+# workstream A, step 6: which model class? gradient boosting (sees the community), hybrid
+# (boosting + explicit linear community term), L1 logit with characteristic x state interactions;
+# greedy vs forward-looking; 20 rounds, 18 points
+base: default.yaml
+name: model_class
+rounds: 20
+seeds: [0, 1, 2]
+policy: {retrain: every_round, features: community}
+grid:
+  truth.params.delta: [-0.3, 0.0, 0.3]
+  policy.model: [gbm, hybrid, lasso]
+  policy.lookahead: [0, 10]

@@ -21,7 +21,8 @@ from sklearn.metrics import roc_auc_score
 from .generator import (INTERACTION_SCENARIOS, ORIGINS, ORIGIN_IDX, STATE_QUOTA, STATES, GroundTruth,
                         assign_states, bernoulli, capacities, initial_stock, normalise,
                         sample_attributes, update_community)
-from .policy import PolicyModel, assign_exact, assign_forward, community_slope, share_increase
+from .estimation import estimate_delta
+from .policy import MODELS, PolicyModel, assign_exact, assign_forward, community_slope, share_increase
 
 
 PLACEMENT_COLUMNS = [f"place__{s}__{o}" for s in STATES for o in ORIGINS]
@@ -29,13 +30,14 @@ PLACEMENT_COLUMNS = [f"place__{s}__{o}" for s in STATES for o in ORIGINS]
 
 def simulate(truth, rounds=10, cohort_size=2000, n_hist=10000, retrain_every=None,
                    window=None, scale=50, seed=0, log_placements=True, features="base",
-                   planner="model", lookahead=0):
+                   planner="model", lookahead=0, model_class="gbm"):
     """One run of the feedback loop (11.11 version, connected to the corrected ground truth).
 
     retrain_every  None = fixed model, 1 = every round, 3 = every third round
     scale          real people represented by one simulated person
     features       what the policy model sees about the community (policy.FEATURE_SETS)
-    planner        who places people: "model" (learned) or "oracle" (knows the true probabilities)
+    planner        who places people: "model" (learned), "oracle" (knows the truth) or "random" (quota)
+    model_class    gbm | hybrid | lasso (policy.MODELS)
     lookahead      future rounds the placement accounts for (0 = greedy, policy.assign_forward)
     The people and the noise depend only on `seed`, so all settings see the same cohorts.
     """
@@ -54,13 +56,13 @@ def simulate(truth, rounds=10, cohort_size=2000, n_hist=10000, retrain_every=Non
     s0 = assign_states(n_hist, rng_hist, mode="exact")
     y0 = bernoulli(rng_hist, truth.probability(people0, s0, u0, C, R), n_hist).astype(int)
     history = [(people0, s0, y0, placed_community(people0, s0, C, R))]
-    model = PolicyModel(seed, features).fit(*history[0])
+    model = MODELS[model_class](seed, features).fit(*history[0])
 
     logs, placements = [], []
     for r in range(1, rounds + 1):
         if retrain_every and r > 1 and (r - 1) % retrain_every == 0:
             used = history if window is None else history[-window:]
-            model = PolicyModel(seed + r, features).fit(
+            model = MODELS[model_class](seed + r, features).fit(
                 pd.concat([h[0] for h in used], ignore_index=True),
                 np.concatenate([h[1] for h in used]),
                 np.concatenate([h[2] for h in used]),
@@ -73,7 +75,7 @@ def simulate(truth, rounds=10, cohort_size=2000, n_hist=10000, retrain_every=Non
         scores = model.predict_matrix(people, {"C": C, "R": R})
         origin_idx = people["country_of_origin"].map(ORIGIN_IDX).to_numpy()
         pi = place(people, u, scores, P, C, R, N, T, origin_idx, cap, model, truth,
-                   planner, lookahead, scale)                     # algorithm
+                   planner, lookahead, scale, rng_stream)                     # algorithm
         pi_star = assign_exact(P, cap)                            # greedy oracle (benchmark)
         y = (rng_stream.random(cohort_size) < P[idx, pi]).astype(int)
 
@@ -106,6 +108,7 @@ def simulate(truth, rounds=10, cohort_size=2000, n_hist=10000, retrain_every=Non
         placements.append(np.bincount(pi * len(ORIGINS) + origin_idx, minlength=len(STATES) * len(ORIGINS)))
 
         history.append((people, pi, y, placed_community(people, pi, C, R)))
+        logs[-1]["delta_hat"] = estimate_delta(history)
         N, T, C, R = update_community(N, T, pi, origin_idx, scale)   # feedback
 
     out = pd.DataFrame(logs)
@@ -114,8 +117,10 @@ def simulate(truth, rounds=10, cohort_size=2000, n_hist=10000, retrain_every=Non
     return out
 
 
-def place(people, u, scores, P, C, R, N, T, origins, cap, model, truth, planner, lookahead, scale):
-    """Placement of one cohort by the learned model or the oracle, greedy or forward-looking."""
+def place(people, u, scores, P, C, R, N, T, origins, cap, model, truth, planner, lookahead, scale, rng):
+    """Placement of one cohort by the learned model, the oracle or at random by quota."""
+    if planner == "random":
+        return rng.permutation(np.repeat(np.arange(len(cap)), cap))
     plan = scores if planner == "model" else P
     if lookahead == 0:
         return assign_exact(plan, cap)
@@ -218,12 +223,13 @@ def run_simulation(config, seed, truth=None):
                    n_hist=config['n_hist'], retrain_every=RETRAIN[config['policy']['retrain']],
                    window=config['policy']['window'], scale=config['scale'], seed=seed,
                    log_placements=True, features=config['policy']['features'],
-                   planner=config['policy']['planner'], lookahead=config['policy']['lookahead'])
+                   planner=config['policy']['planner'], lookahead=config['policy']['lookahead'],
+                   model_class=config['policy']['model'])
     t = config['truth']
     meta = {'run_key': run_key(config, seed), 'seed': seed, 'form': t['form'],
             'interactions': t['interactions'], 'policy': config['policy']['retrain'],
             'features': config['policy']['features'],
-            'planner': config['policy']['planner'], 'lookahead': config['policy']['lookahead'],
+            'model': config['policy']['model'], 'planner': config['policy']['planner'], 'lookahead': config['policy']['lookahead'],
             'n_hist': config['n_hist'], 'cohort_size': config['cohort_size'],
             **{p: t['params'].get(p, 0.0) for p in COMMUNITY_PARAMS}}
     for i, (key, value) in enumerate(meta.items()):

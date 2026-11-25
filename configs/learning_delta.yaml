@@ -1,0 +1,9 @@
+# workstream A, step 5: is the community effect estimated correctly from the algorithm's own data?
+# delta_hat (logit coefficient of z on all data so far) vs the true delta; random placement as control
+base: default.yaml
+name: learning_delta
+policy: {features: community}
+grid:
+  truth.params.delta: [-0.3, -0.15, 0.0, 0.15, 0.3]
+  policy.planner: [model, random]
+  policy.retrain: [fixed, every_round]

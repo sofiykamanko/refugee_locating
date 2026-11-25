@@ -1,0 +1,9 @@
+# workstream A, step 1: does the model stop degrading once it sees the community?
+# 54 points: features x community effect x interaction scenario x retraining
+base: default.yaml
+name: community_model
+grid:
+  policy.features: [base, community, community_recent]
+  truth.params.delta: [-0.3, 0.0, 0.3]
+  truth.interactions: [SOEP, stylised x4, none]
+  policy.retrain: [fixed, every_round]

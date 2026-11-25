@@ -4,9 +4,9 @@ from pathlib import Path
 
 import numpy as np
 
-from refugee_sim.generator import capacities
-from refugee_sim.policy import assign_exact, assign_exact_scipy
-from refugee_sim.simulation import PLACEMENT_COLUMNS, expand, load_config, run_simulation
+from refugee_sim.generator import ORIGIN_IDX, capacities, initial_stock, sample_attributes
+from refugee_sim.policy import PolicyModel, assign_exact, assign_exact_scipy, encode
+from refugee_sim.simulation import PLACEMENT_COLUMNS, _merge, expand, load_config, run_simulation
 
 CONFIGS = Path(__file__).resolve().parents[1] / 'configs'
 METRICS = ['welfare_algo', 'welfare_random', 'welfare_oracle', 'gain_pct', 'oracle_gain_pct',
@@ -38,3 +38,29 @@ def test_experiment_configs():
     assert len(expand(load_config(CONFIGS / 'main.yaml'))) == 45
     assert len(expand(load_config(CONFIGS / 'history.yaml'))) == 6
     assert len(expand(load_config(CONFIGS / 'forms.yaml'))) == 10
+    assert len(expand(load_config(CONFIGS / 'community_model.yaml'))) == 54
+
+
+def test_community_features_run():
+    config = _merge(load_config(CONFIGS / 'smoke.yaml'),
+                    {'policy': {'features': 'community_recent', 'retrain': 'every_round'}})
+    df = run_simulation(config, seed=0)
+    assert (df['features'] == 'community_recent').all()
+    assert df['gain_pct'].notna().all()
+
+
+def test_community_matrix_matches_single_predictions():
+    '''predict_matrix must give person i in state k the community value C[k, origin_i].'''
+    rng = np.random.default_rng(0)
+    people = sample_attributes(800, rng)
+    N, T = initial_stock()
+    C, R = N / T[:, None], rng.random(N.shape) / 100
+    origins = people['country_of_origin'].map(ORIGIN_IDX).to_numpy()
+    states = rng.integers(0, 16, len(people))
+    y = rng.random(len(people)) < 0.2 + 5 * C[states, origins]
+    model = PolicyModel(0, 'community_recent').fit(
+        people, states, y, {'C': C[states, origins], 'R': R[states, origins]})
+    matrix = model.predict_matrix(people, {'C': C, 'R': R})
+    for k in (0, 7, 15):
+        rows = np.column_stack([encode(people), np.full(len(people), k), C[k, origins], R[k, origins]])
+        assert np.allclose(matrix[:, k], model.clf.predict_proba(rows)[:, 1])

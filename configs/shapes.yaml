@@ -1,0 +1,22 @@
+# workstream A, step 7: do the step 3-6 conclusions hold for other shapes of the community effect?
+# hybrid and lasso assume a linear effect, so non-linear shapes also test misspecification
+# 5 shapes x 6 placements = 30 points, 20 rounds, 3 seeds
+base: default.yaml
+name: shapes
+rounds: 20
+seeds: [0, 1, 2]
+policy: {retrain: every_round, features: community}
+grid:
+  truth:
+    - {form: inverted_u, params: {delta: 0.3, kappa: 0.15}}
+    - {form: saturating, params: {delta: 0.3}}
+    - {form: saturating, params: {delta: -0.3}}
+    - {form: women_stronger, params: {delta: 0.15, delta_female: 0.15}}
+    - {form: stock_vs_recent, params: {delta: 0.15, delta_recent: -0.3}}
+  policy:
+    - {model: gbm, planner: model, lookahead: 0}
+    - {model: lasso, planner: model, lookahead: 0}
+    - {model: lasso, planner: model, lookahead: 10}
+    - {model: hybrid, planner: model, lookahead: 10}
+    - {model: gbm, planner: oracle, lookahead: 0}
+    - {model: gbm, planner: oracle, lookahead: 10}

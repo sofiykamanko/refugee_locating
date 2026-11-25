@@ -43,6 +43,7 @@ def test_experiment_configs():
     assert len(expand(load_config(CONFIGS / 'forward_looking.yaml'))) == 18
     assert len(expand(load_config(CONFIGS / 'learning_delta.yaml'))) == 20
     assert len(expand(load_config(CONFIGS / 'model_class.yaml'))) == 18
+    assert len(expand(load_config(CONFIGS / 'shapes.yaml'))) == 30
 
 
 def test_community_features_run():

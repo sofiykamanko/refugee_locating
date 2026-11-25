@@ -5,7 +5,8 @@ from pathlib import Path
 import numpy as np
 
 from refugee_sim.generator import ORIGIN_IDX, capacities, initial_stock, sample_attributes
-from refugee_sim.policy import PolicyModel, assign_exact, assign_exact_scipy, encode
+from refugee_sim.policy import (PolicyModel, assign_exact, assign_exact_scipy, assign_forward, encode,
+                                share_increase)
 from refugee_sim.simulation import PLACEMENT_COLUMNS, _merge, expand, load_config, run_simulation
 
 CONFIGS = Path(__file__).resolve().parents[1] / 'configs'
@@ -39,6 +40,7 @@ def test_experiment_configs():
     assert len(expand(load_config(CONFIGS / 'history.yaml'))) == 6
     assert len(expand(load_config(CONFIGS / 'forms.yaml'))) == 10
     assert len(expand(load_config(CONFIGS / 'community_model.yaml'))) == 54
+    assert len(expand(load_config(CONFIGS / 'forward_looking.yaml'))) == 18
 
 
 def test_community_features_run():
@@ -64,3 +66,32 @@ def test_community_matrix_matches_single_predictions():
     for k in (0, 7, 15):
         rows = np.column_stack([encode(people), np.full(len(people), k), C[k, origins], R[k, origins]])
         assert np.allclose(matrix[:, k], model.clf.predict_proba(rows)[:, 1])
+
+
+def test_forward_placement():
+    '''lookahead 0 is the greedy placement; with lookahead the placement scores higher on its own
+    objective (this cohort + effect on future cohorts) and still meets the quotas.'''
+    rng = np.random.default_rng(0)
+    n, K = 600, 16
+    scores, cap = rng.random((n, K)) * 0.2, capacities(n)
+    origins = rng.integers(0, 9, n)
+    slope = -rng.random((K, 9))
+    N, T = initial_stock()
+    dC = share_increase(N, T, 50) * 50
+    assert (assign_forward(scores, cap, origins, slope, dC, 0) == assign_exact(scores, cap)).all()
+
+    def objective(pi, lookahead):
+        counts = np.zeros((K, 9))
+        np.add.at(counts, (pi, origins), 1)
+        return scores[np.arange(n), pi].sum() + lookahead * (counts * slope * dC * counts).sum()
+
+    forward = assign_forward(scores, cap, origins, slope, dC, 10)
+    assert (np.bincount(forward, minlength=K) == cap).all()
+    assert objective(forward, 10) > objective(assign_exact(scores, cap), 10)
+
+
+def test_forward_run():
+    config = _merge(load_config(CONFIGS / 'smoke.yaml'),
+                    {'policy': {'features': 'community', 'planner': 'model', 'lookahead': 3}})
+    df = run_simulation(config, seed=0)
+    assert (df['lookahead'] == 3).all() and df['gain_pct'].notna().all()

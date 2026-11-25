@@ -47,13 +47,14 @@ Every config starts from `default.yaml` (`base: default.yaml`) and only states w
 | `history.yaml` | Size of the training history (3,000 / 30,000 / 100,000) for SOEP and ×4 interactions, model retrained every round. |
 | `forms.yaml` | Alternative community-effect shapes under SOEP interactions: inverted U, saturating (±), stronger for women, established vs recent arrivals; fixed vs retrained every round. |
 | `community_model.yaml` | Workstream A, step 1: the policy model sees the community (`policy.features`: base / community / community_recent), 54 points: features × δ ∈ {−0.3, 0, 0.3} × interactions × fixed vs every round. |
+| `forward_looking.yaml` | Workstream A, step 3: greedy vs forward-looking placement (`policy.lookahead`: 0 / 3 / 10 future rounds), learned model vs oracle (`policy.planner`), δ ∈ {−0.3, 0, 0.3}, SOEP, 20 rounds, 18 points. |
 
 ## Code
 
 | Module | Content |
 |---|---|
 | `src/refugee_sim/generator.py` | Synthetic population, calibrated ground-truth employment model, community stock updates |
-| `src/refugee_sim/policy.py` | Gradient-boosting policy model and capacity-constrained matching |
+| `src/refugee_sim/policy.py` | Gradient-boosting policy model (optionally seeing the community), greedy and forward-looking capacity-constrained matching |
 | `src/refugee_sim/simulation.py` | Feedback loop, `run_simulation(config, seed)`, config loading, results |
 
 `notebooks/analysis.ipynb` produces the figures from `results/` only (`uv run jupyter lab`); notebooks contain no simulation code. Data sources are described in `data/README.md`.

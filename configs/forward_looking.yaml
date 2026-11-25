@@ -1,0 +1,10 @@
+# workstream A, step 3: greedy vs forward-looking placement, learned model vs oracle
+# 18 points; 20 rounds so that early sacrifices and later gains are both visible
+base: default.yaml
+name: forward_looking
+rounds: 20
+policy: {retrain: every_round, features: community}
+grid:
+  truth.params.delta: [-0.3, 0.0, 0.3]
+  policy.planner: [model, oracle]
+  policy.lookahead: [0, 3, 10]

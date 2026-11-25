@@ -150,3 +150,61 @@ def assign_fast(scores, cap):
 def assign_exact(scores, cap):
     """Maximum-weight assignment of n people to states with capacities cap (same optimum as the scipy version)."""
     return assign_fast(scores, cap)
+
+
+# ---------------------------------------------------------------------------
+# Forward-looking placement (workstream A, step 3)
+# ---------------------------------------------------------------------------
+# A greedy placement maximises this cohort's employment only. Every placement also raises the
+# co-national share C[state, origin], which changes the chances of the next arrivals of that
+# origin in that state. The forward-looking placement adds this effect for `lookahead` future
+# rounds, assuming each of them sends as many people of each origin to each state as this one.
+#
+#   future employment  F = lookahead * sum_{s,o} n[s,o] * slope[s,o] * dC[s,o] * n[s,o]
+#   bonus for placing one more person of origin o in s = dF/dn = 2 * lookahead * n * slope * dC
+#
+# F is concave in n (slope < 0) or convex (slope > 0), so it is optimised with Frank-Wolfe steps:
+# each step solves a greedy placement on the current gradient and moves n a shrinking step towards it.
+# Effects of a state's growing total of foreigners on the other origins there are ignored.
+
+def community_slope(predict, people, C, eps=0.01):
+    """16 x 9 matrix: change in mean predicted employment per unit of co-national share C,
+    for the people of each origin in this cohort, in each state (central difference).
+
+    predict  function C -> n x 16 matrix of employment probabilities (model or truth)
+    """
+    origins = people["country_of_origin"].map(ORIGIN_IDX).to_numpy()
+    slope = np.zeros_like(C)
+    for o in np.unique(origins):
+        up, down = C.copy(), C.copy()
+        up[:, o] += eps
+        down[:, o] = np.maximum(down[:, o] - eps, 0.0)
+        step = (up - down)[:, o]
+        rows = origins == o
+        slope[:, o] = ((predict(up)[rows] - predict(down)[rows]).mean(axis=0)) / step
+    return slope
+
+
+def share_increase(N, T, scale):
+    """16 x 9 matrix: increase of C[state, origin] when one more simulated person is placed there."""
+    T = T[:, None]
+    return scale * (T - N) / (T * (T + scale))
+
+
+def assign_forward(scores, cap, origins, slope, dC, lookahead, iterations=30):
+    """Placement that maximises this cohort's scores plus the community effect on future cohorts.
+
+    lookahead = 0 gives the greedy assign_exact().
+    """
+    pi = assign_exact(scores, cap)
+    if lookahead == 0:
+        return pi
+    weight = 2 * lookahead * slope * dC                       # 16 x 9, bonus per placed co-national
+    counts = np.zeros_like(slope)
+    np.add.at(counts, (pi, origins), 1)
+    for k in range(1, iterations + 1):
+        pi = assign_exact(scores + (weight * counts)[:, origins].T, cap)
+        target = np.zeros_like(counts)
+        np.add.at(target, (pi, origins), 1)
+        counts += 2 / (k + 2) * (target - counts)
+    return assign_exact(scores + (weight * counts)[:, origins].T, cap)

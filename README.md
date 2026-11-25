@@ -41,11 +41,12 @@ Every config starts from `default.yaml` (`base: default.yaml`) and only states w
 
 | File | Purpose |
 |---|---|
-| `default.yaml` | Agreed defaults: 10 rounds, 2,000 arrivals per round, 10,000 in history, 5 seeds (raise to 10–20 for final figures), linear community effect with δ = 0, SOEP interactions, fixed model. |
+| `default.yaml` | Agreed defaults: 10 rounds, 2,000 arrivals per round, 10,000 in history, 5 seeds (raise to 10–20 for final figures), linear community effect with δ = 0, SOEP interactions, fixed model that does not see the community. |
 | `smoke.yaml` | Quick check: 2 rounds, 500 arrivals, 500 in history, 1 seed. Used by the tests. |
 | `main.yaml` | Main experiment, 45 points: δ ∈ {−0.3, −0.15, 0, 0.15, 0.3} × interactions (SOEP, stylised ×4, none) × retraining (fixed, every 3 rounds, every round). |
 | `history.yaml` | Size of the training history (3,000 / 30,000 / 100,000) for SOEP and ×4 interactions, model retrained every round. |
 | `forms.yaml` | Alternative community-effect shapes under SOEP interactions: inverted U, saturating (±), stronger for women, established vs recent arrivals; fixed vs retrained every round. |
+| `community_model.yaml` | Workstream A, step 1: the policy model sees the community (`policy.features`: base / community / community_recent), 54 points: features × δ ∈ {−0.3, 0, 0.3} × interactions × fixed vs every round. |
 
 ## Code
 

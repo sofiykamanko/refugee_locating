@@ -33,25 +33,46 @@ def encode(people):
     ]).astype(float)
 
 
-class PolicyModel:
-    """P(employed | X, state), trained only on observed (X, state, outcome)."""
+# What the model sees about the co-national community in a state (workstream A).
+#   base              nothing: the model only sees the person and the state
+#   community         share of co-nationals among all foreigners in the state, C[state, origin]
+#   community_recent  the same plus the share of last round's arrivals, R[state, origin]
+# Raw shares are used: tree models do not need the standardised z of the ground truth.
+FEATURE_SETS = {"base": (), "community": ("C",), "community_recent": ("C", "R")}
 
-    def __init__(self, seed=0):
+
+class PolicyModel:
+    """P(employed | X, state[, community]), trained only on observed (X, state, outcome).
+
+    features  key of FEATURE_SETS; community values are appended after the state column.
+    """
+
+    def __init__(self, seed=0, features="base"):
+        self.features = features
         # column 9 (state) is appended to encode(); categorical = origin, religion, state
         self.clf = HistGradientBoostingClassifier(
             max_iter=150, learning_rate=0.05, max_leaf_nodes=15, min_samples_leaf=50,
             categorical_features=[2, 8, 9], early_stopping=False, random_state=seed)
 
-    def fit(self, people, states, y):
-        self.clf.fit(np.column_stack([encode(people), states]), y)
+    def fit(self, people, states, y, placed_community=None):
+        """placed_community  {"C": n, "R": n}: shares each person met in the state they were placed in."""
+        X = np.column_stack([encode(people), states]
+                            + [placed_community[f] for f in FEATURE_SETS[self.features]])
+        self.clf.fit(X, y)
         return self
 
-    def predict_matrix(self, people):
-        """n x 16 matrix of predicted employment probabilities."""
+    def predict_matrix(self, people, community=None):
+        """n x 16 matrix of predicted employment probabilities.
+
+        community  {"C": 16 x 9, "R": 16 x 9} shares at the time of placement
+        """
         # CHANGED (speed): one predict_proba call on all 16 x n rows instead of 16 calls
         base = encode(people)
         n, K = len(base), len(STATES)
-        stacked = np.column_stack([np.tile(base, (K, 1)), np.repeat(np.arange(K), n)])
+        origins = people["country_of_origin"].map(ORIGIN_IDX).to_numpy()
+        # row k*n + i is person i in state k, so community[f][:, origins] (K x n) is flattened row-wise
+        stacked = np.column_stack([np.tile(base, (K, 1)), np.repeat(np.arange(K), n)]
+                                  + [community[f][:, origins].reshape(-1) for f in FEATURE_SETS[self.features]])
         return self.clf.predict_proba(stacked)[:, 1].reshape(K, n).T
 
 

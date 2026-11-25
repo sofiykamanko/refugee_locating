@@ -28,11 +28,12 @@ PLACEMENT_COLUMNS = [f"place__{s}__{o}" for s in STATES for o in ORIGINS]
 
 
 def simulate(truth, rounds=10, cohort_size=2000, n_hist=10000, retrain_every=None,
-                   window=None, scale=50, seed=0, log_placements=True):
+                   window=None, scale=50, seed=0, log_placements=True, features="base"):
     """One run of the feedback loop (11.11 version, connected to the corrected ground truth).
 
     retrain_every  None = fixed model, 1 = every round, 3 = every third round
     scale          real people represented by one simulated person
+    features       what the policy model sees about the community (policy.FEATURE_SETS)
     The people and the noise depend only on `seed`, so all settings see the same cohorts.
     """
     rng_hist = np.random.default_rng(seed)
@@ -49,22 +50,24 @@ def simulate(truth, rounds=10, cohort_size=2000, n_hist=10000, retrain_every=Non
     u0 = rng_hist.normal(0, truth.sigma_u, n_hist)
     s0 = assign_states(n_hist, rng_hist, mode="exact")
     y0 = bernoulli(rng_hist, truth.probability(people0, s0, u0, C, R), n_hist).astype(int)
-    history = [(people0, s0, y0)]
-    model = PolicyModel(seed).fit(people0, s0, y0)
+    history = [(people0, s0, y0, placed_community(people0, s0, C, R))]
+    model = PolicyModel(seed, features).fit(*history[0])
 
     logs, placements = [], []
     for r in range(1, rounds + 1):
         if retrain_every and r > 1 and (r - 1) % retrain_every == 0:
             used = history if window is None else history[-window:]
-            model = PolicyModel(seed + r).fit(pd.concat([h[0] for h in used], ignore_index=True),
-                                              np.concatenate([h[1] for h in used]),
-                                              np.concatenate([h[2] for h in used]))
+            model = PolicyModel(seed + r, features).fit(
+                pd.concat([h[0] for h in used], ignore_index=True),
+                np.concatenate([h[1] for h in used]),
+                np.concatenate([h[2] for h in used]),
+                {f: np.concatenate([h[3][f] for h in used]) for f in ("C", "R")})
 
         people = sample_attributes(cohort_size, rng_stream)
         u = rng_stream.normal(0, truth.sigma_u, cohort_size)
         P = truth.probability_all_states(people, u, C, R)        # truth under the CURRENT world
 
-        scores = model.predict_matrix(people)
+        scores = model.predict_matrix(people, {"C": C, "R": R})
         pi = assign_exact(scores, cap)                            # algorithm
         pi_star = assign_exact(P, cap)                            # oracle
         y = (rng_stream.random(cohort_size) < P[idx, pi]).astype(int)
@@ -98,13 +101,19 @@ def simulate(truth, rounds=10, cohort_size=2000, n_hist=10000, retrain_every=Non
         })
         placements.append(np.bincount(pi * len(ORIGINS) + origin_idx, minlength=len(STATES) * len(ORIGINS)))
 
+        history.append((people, pi, y, placed_community(people, pi, C, R)))
         N, T, C, R = update_community(N, T, pi, origin_idx, scale)   # feedback
-        history.append((people, pi, y))
 
     out = pd.DataFrame(logs)
     if log_placements:
         out = pd.concat([out, pd.DataFrame(np.array(placements).reshape(rounds, -1), columns=PLACEMENT_COLUMNS)], axis=1)
     return out
+
+
+def placed_community(people, states, C, R):
+    """Community shares each person met in the state they were placed in (training data for the model)."""
+    origins = people["country_of_origin"].map(ORIGIN_IDX).to_numpy()
+    return {"C": C[states, origins], "R": R[states, origins]}
 
 
 RETRAIN = {"fixed": None, "every_3": 3, "every_round": 1}
@@ -191,10 +200,11 @@ def run_simulation(config, seed, truth=None):
     out = simulate(truth, rounds=config['rounds'], cohort_size=config['cohort_size'],
                    n_hist=config['n_hist'], retrain_every=RETRAIN[config['policy']['retrain']],
                    window=config['policy']['window'], scale=config['scale'], seed=seed,
-                   log_placements=True)
+                   log_placements=True, features=config['policy']['features'])
     t = config['truth']
     meta = {'run_key': run_key(config, seed), 'seed': seed, 'form': t['form'],
             'interactions': t['interactions'], 'policy': config['policy']['retrain'],
+            'features': config['policy']['features'],
             'n_hist': config['n_hist'], 'cohort_size': config['cohort_size'],
             **{p: t['params'].get(p, 0.0) for p in COMMUNITY_PARAMS}}
     for i, (key, value) in enumerate(meta.items()):

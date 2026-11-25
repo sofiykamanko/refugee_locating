@@ -14,5 +14,6 @@ truth:
 policy:
   retrain: fixed              # fixed | every_3 | every_round
   window: null                # rounds of history used when retraining; null = all
+  features: base              # what the model sees about the community: base | community | community_recent
 
 results_dir: results

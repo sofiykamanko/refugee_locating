@@ -1,0 +1,10 @@
+# workstream b, control 1: is the degradation caused by the feedback loop?
+# the community is fed by the model's placements (endogenous) or by the same number of
+# people placed independently of the model (quota: random by quota; shuffled: the model's
+# per-origin flows sent to randomly permuted states, i.e. a shift of the same size)
+base: default.yaml
+name: exogenous
+grid:
+  truth.params.delta: [-0.3, 0.0, 0.3]
+  policy.retrain: [fixed, every_round]
+  shift: [endogenous, quota, shuffled]

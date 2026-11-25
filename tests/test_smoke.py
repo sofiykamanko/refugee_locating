@@ -105,3 +105,20 @@ def test_model_classes_run():
         config = _merge(load_config(CONFIGS / 'smoke.yaml'), {'policy': {'model': name, 'lookahead': 3}})
         df = run_simulation(config, seed=0)
         assert (df['model'] == name).all() and df['gain_pct'].notna().all()
+
+
+def test_community_feed_keeps_headcount():
+    from refugee_sim.simulation import community_feed
+    rng = np.random.default_rng(0)
+    cap = capacities(500)
+    pi = rng.permutation(np.repeat(np.arange(16), cap))
+    origins = rng.integers(0, 9, 500)
+    for shift in ['endogenous', 'quota', 'shuffled']:
+        states, o = community_feed(shift, pi, origins, cap, rng)
+        assert len(states) == 500 and (o == origins).all()
+    # shuffled keeps the size of every origin's flow, only the states change
+    states, _ = community_feed('shuffled', pi, origins, cap, rng)
+    for k in range(9):
+        a = np.sort(np.bincount(pi[origins == k], minlength=16))
+        b = np.sort(np.bincount(states[origins == k], minlength=16))
+        assert (a == b).all()

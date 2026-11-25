@@ -5,6 +5,7 @@ rounds: 10
 cohort_size: 2000             # arrivals per round
 n_hist: 10000                 # historical arrivals the first model is trained on
 scale: 50                     # real people represented by one simulated person
+shift: endogenous             # who feeds the community: endogenous (model's placements) | quota | shuffled
 
 truth:
   form: linear                # linear | inverted_u | saturating | women_stronger | stock_vs_recent

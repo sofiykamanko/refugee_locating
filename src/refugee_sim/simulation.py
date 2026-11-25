@@ -30,7 +30,7 @@ PLACEMENT_COLUMNS = [f"place__{s}__{o}" for s in STATES for o in ORIGINS]
 
 def simulate(truth, rounds=10, cohort_size=2000, n_hist=10000, retrain_every=None,
                    window=None, scale=50, seed=0, log_placements=True, features="base",
-                   planner="model", lookahead=0, model_class="gbm"):
+                   planner="model", lookahead=0, model_class="gbm", shift="endogenous"):
     """One run of the feedback loop (11.11 version, connected to the corrected ground truth).
 
     retrain_every  None = fixed model, 1 = every round, 3 = every third round
@@ -39,16 +39,22 @@ def simulate(truth, rounds=10, cohort_size=2000, n_hist=10000, retrain_every=Non
     planner        who places people: "model" (learned), "oracle" (knows the truth) or "random" (quota)
     model_class    gbm | hybrid | lasso (policy.MODELS)
     lookahead      future rounds the placement accounts for (0 = greedy, policy.assign_forward)
+    shift          who feeds the community (exogenous-shift control, workstream b):
+                   "endogenous" = the model's own placements; "quota" = the same number of people
+                   placed at random by quota; "shuffled" = the model's per-origin flows sent to
+                   randomly permuted states (same size of shift, random direction)
     The people and the noise depend only on `seed`, so all settings see the same cohorts.
     """
     rng_hist = np.random.default_rng(seed)
     rng_stream = np.random.default_rng(seed + 10_000)
+    rng_shift = np.random.default_rng(seed + 20_000)   # separate stream: the cohorts stay identical
     q = normalise(STATE_QUOTA)
     cap = capacities(cohort_size)
     idx = np.arange(cohort_size)
 
     N, T = initial_stock()
     C, R = N / T[:, None], np.zeros_like(N)
+    C_start = C.copy()
 
     # Round 0: historical data under random exact quota assignment at C0
     people0 = sample_attributes(n_hist, rng_hist)
@@ -109,7 +115,8 @@ def simulate(truth, rounds=10, cohort_size=2000, n_hist=10000, retrain_every=Non
 
         history.append((people, pi, y, placed_community(people, pi, C, R)))
         logs[-1]["delta_hat"] = estimate_delta(history)
-        N, T, C, R = update_community(N, T, pi, origin_idx, scale)   # feedback
+        N, T, C, R = update_community(N, T, *community_feed(shift, pi, origin_idx, cap, rng_shift), scale)   # feedback
+        logs[-1]["community_drift"] = np.abs(C - C_start).mean() / truth.c_sd   # mean |z - z0| after this round
 
     out = pd.DataFrame(logs)
     if log_placements:
@@ -130,6 +137,21 @@ def place(people, u, scores, P, C, R, N, T, origins, cap, model, truth, planner,
         predict = lambda C_: truth.probability_all_states(people, u, C_, R)
     slope = community_slope(predict, people, C)
     return assign_forward(plan, cap, origins, slope, share_increase(N, T, scale), lookahead)
+
+
+def community_feed(shift, pi, origins, cap, rng):
+    """(states, origins) of the people who join the community this round."""
+    if shift == "endogenous":
+        return pi, origins
+    if shift == "quota":
+        return rng.permutation(np.repeat(np.arange(len(cap)), cap)), origins
+    if shift == "shuffled":
+        states = pi.copy()
+        for o in np.unique(origins):
+            members = origins == o
+            states[members] = rng.permutation(len(cap))[pi[members]]
+        return states, origins
+    raise ValueError("shift must be 'endogenous', 'quota' or 'shuffled'")
 
 
 def placed_community(people, states, C, R):
@@ -224,13 +246,13 @@ def run_simulation(config, seed, truth=None):
                    window=config['policy']['window'], scale=config['scale'], seed=seed,
                    log_placements=True, features=config['policy']['features'],
                    planner=config['policy']['planner'], lookahead=config['policy']['lookahead'],
-                   model_class=config['policy']['model'])
+                   model_class=config['policy']['model'], shift=config['shift'])
     t = config['truth']
     meta = {'run_key': run_key(config, seed), 'seed': seed, 'form': t['form'],
             'interactions': t['interactions'], 'policy': config['policy']['retrain'],
             'features': config['policy']['features'],
             'model': config['policy']['model'], 'planner': config['policy']['planner'], 'lookahead': config['policy']['lookahead'],
-            'n_hist': config['n_hist'], 'cohort_size': config['cohort_size'],
+            'shift': config['shift'], 'n_hist': config['n_hist'], 'cohort_size': config['cohort_size'],
             **{p: t['params'].get(p, 0.0) for p in COMMUNITY_PARAMS}}
     for i, (key, value) in enumerate(meta.items()):
         out.insert(i, key, value)

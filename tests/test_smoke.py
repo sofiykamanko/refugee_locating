@@ -1,4 +1,4 @@
-'''Run before every pull request: python -m pytest (well under a minute).'''
+'''Run before every pull request: python -m pytest.'''
 import time
 from pathlib import Path
 

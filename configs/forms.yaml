@@ -1,0 +1,11 @@
+# other shapes of the community effect (SOEP interactions)
+base: default.yaml
+name: forms
+grid:
+  truth:
+    - {form: inverted_u, params: {delta: 0.3, kappa: 0.15}}
+    - {form: saturating, params: {delta: 0.3}}
+    - {form: saturating, params: {delta: -0.3}}
+    - {form: women_stronger, params: {delta: 0.15, delta_female: 0.15}}
+    - {form: stock_vs_recent, params: {delta: 0.15, delta_recent: -0.3}}
+  policy.retrain: [fixed, every_round]

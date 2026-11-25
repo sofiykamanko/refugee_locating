@@ -1,0 +1,7 @@
+# how much history does the first model need? (delta = 0, retrained every round)
+base: default.yaml
+name: history
+policy: {retrain: every_round}
+grid:
+  truth.interactions: [SOEP, stylised x4]
+  n_hist: [3000, 30000, 100000]

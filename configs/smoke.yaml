@@ -1,0 +1,8 @@
+# quick check before a pull request: python -m pytest
+base: default.yaml
+name: smoke
+seeds: [0]
+rounds: 2
+cohort_size: 500
+n_hist: 500
+results_dir: results/smoke

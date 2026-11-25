@@ -1,0 +1,7 @@
+# main grid: community effect x interaction scenario x retraining policy (45 runs per seed)
+base: default.yaml
+name: main
+grid:
+  truth.interactions: [SOEP, stylised x4, none]
+  truth.params.delta: [-0.3, -0.15, 0.0, 0.15, 0.3]
+  policy.retrain: [fixed, every_3, every_round]

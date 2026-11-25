@@ -1,0 +1,18 @@
+# agreed defaults; every other config starts from this file (base: default.yaml)
+name: default
+seeds: [0, 1, 2, 3, 4]        # raise to 10-20 for final figures
+rounds: 10
+cohort_size: 2000             # arrivals per round
+n_hist: 10000                 # historical arrivals the first model is trained on
+scale: 50                     # real people represented by one simulated person
+
+truth:
+  form: linear                # linear | inverted_u | saturating | women_stronger | stock_vs_recent
+  params: {delta: 0.0}        # delta, kappa, delta_female, delta_recent
+  interactions: SOEP          # main scenario; checks: 'stylised x4', none
+
+policy:
+  retrain: fixed              # fixed | every_3 | every_round
+  window: null                # rounds of history used when retraining; null = all
+
+results_dir: results

@@ -47,6 +47,7 @@ Every config starts from `default.yaml` (`base: default.yaml`) and only states w
 | `history.yaml` | Size of the training history (3,000 / 30,000 / 100,000) for SOEP and ×4 interactions, model retrained every round. |
 | `forms.yaml` | Alternative community-effect shapes under SOEP interactions: inverted U, saturating (±), stronger for women, established vs recent arrivals; fixed vs retrained every round. |
 | `community_model.yaml` | Workstream A, step 1: the policy model sees the community (`policy.features`: base / community / community_recent), 54 points: features × δ ∈ {−0.3, 0, 0.3} × interactions × fixed vs every round. |
+| `learning_delta.yaml` | Workstream A, step 5: is δ estimated correctly from the algorithm's own data (`delta_hat`)? Model vs random placement, fixed vs every round, 5 values of δ, 20 points. |
 | `forward_looking.yaml` | Workstream A, step 3: greedy vs forward-looking placement (`policy.lookahead`: 0 / 3 / 10 future rounds), learned model vs oracle (`policy.planner`), δ ∈ {−0.3, 0, 0.3}, SOEP, 20 rounds, 18 points. |
 
 ## Code

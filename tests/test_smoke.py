@@ -41,6 +41,7 @@ def test_experiment_configs():
     assert len(expand(load_config(CONFIGS / 'forms.yaml'))) == 10
     assert len(expand(load_config(CONFIGS / 'community_model.yaml'))) == 54
     assert len(expand(load_config(CONFIGS / 'forward_looking.yaml'))) == 18
+    assert len(expand(load_config(CONFIGS / 'learning_delta.yaml'))) == 20
 
 
 def test_community_features_run():
@@ -95,3 +96,4 @@ def test_forward_run():
                     {'policy': {'features': 'community', 'planner': 'model', 'lookahead': 3}})
     df = run_simulation(config, seed=0)
     assert (df['lookahead'] == 3).all() and df['gain_pct'].notna().all()
+    assert df['delta_hat'].notna().all()

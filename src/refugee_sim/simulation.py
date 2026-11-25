@@ -21,6 +21,7 @@ from sklearn.metrics import roc_auc_score
 from .generator import (INTERACTION_SCENARIOS, ORIGINS, ORIGIN_IDX, STATE_QUOTA, STATES, GroundTruth,
                         assign_states, bernoulli, capacities, initial_stock, normalise,
                         sample_attributes, update_community)
+from .estimation import estimate_delta
 from .policy import PolicyModel, assign_exact, assign_forward, community_slope, share_increase
 
 
@@ -35,7 +36,7 @@ def simulate(truth, rounds=10, cohort_size=2000, n_hist=10000, retrain_every=Non
     retrain_every  None = fixed model, 1 = every round, 3 = every third round
     scale          real people represented by one simulated person
     features       what the policy model sees about the community (policy.FEATURE_SETS)
-    planner        who places people: "model" (learned) or "oracle" (knows the true probabilities)
+    planner        who places people: "model" (learned), "oracle" (knows the truth) or "random" (quota)
     lookahead      future rounds the placement accounts for (0 = greedy, policy.assign_forward)
     The people and the noise depend only on `seed`, so all settings see the same cohorts.
     """
@@ -73,7 +74,7 @@ def simulate(truth, rounds=10, cohort_size=2000, n_hist=10000, retrain_every=Non
         scores = model.predict_matrix(people, {"C": C, "R": R})
         origin_idx = people["country_of_origin"].map(ORIGIN_IDX).to_numpy()
         pi = place(people, u, scores, P, C, R, N, T, origin_idx, cap, model, truth,
-                   planner, lookahead, scale)                     # algorithm
+                   planner, lookahead, scale, rng_stream)                     # algorithm
         pi_star = assign_exact(P, cap)                            # greedy oracle (benchmark)
         y = (rng_stream.random(cohort_size) < P[idx, pi]).astype(int)
 
@@ -106,6 +107,7 @@ def simulate(truth, rounds=10, cohort_size=2000, n_hist=10000, retrain_every=Non
         placements.append(np.bincount(pi * len(ORIGINS) + origin_idx, minlength=len(STATES) * len(ORIGINS)))
 
         history.append((people, pi, y, placed_community(people, pi, C, R)))
+        logs[-1]["delta_hat"] = estimate_delta(history, truth.c_mean, truth.c_sd)
         N, T, C, R = update_community(N, T, pi, origin_idx, scale)   # feedback
 
     out = pd.DataFrame(logs)
@@ -114,8 +116,10 @@ def simulate(truth, rounds=10, cohort_size=2000, n_hist=10000, retrain_every=Non
     return out
 
 
-def place(people, u, scores, P, C, R, N, T, origins, cap, model, truth, planner, lookahead, scale):
-    """Placement of one cohort by the learned model or the oracle, greedy or forward-looking."""
+def place(people, u, scores, P, C, R, N, T, origins, cap, model, truth, planner, lookahead, scale, rng):
+    """Placement of one cohort by the learned model, the oracle or at random by quota."""
+    if planner == "random":
+        return rng.permutation(np.repeat(np.arange(len(cap)), cap))
     plan = scores if planner == "model" else P
     if lookahead == 0:
         return assign_exact(plan, cap)
